@@ -2786,183 +2786,693 @@ app.get(`/products`, (req, res) => {
 
 - Let's create task reading endpoints
 - #### Challenge: Set up the task reading endpoints
+
   - Create an endpoint for fetching all tasks
   - Create an endpoint for fetching a task by its id
   - Set up new requests in Postman and test your work
+
   ```js
-  const
+  app.get(`/tasks`, (req, res) => {
+    Task.find({})
+      .then((tasks) => {
+        res.status(200).send(tasks)
+      })
+      .catch((e) => {
+        res.status(500).send()
+      })
+  })
+
+  app.get(`/tasks/:id`, (req, res) => {
+    const _id = req.params.id
+    Task.findById(_id)
+      .then((task) => {
+        if (!task) {
+          return res.status(404).send()
+        }
+        res.status(200).send(task)
+      })
+      .catch((e) => {
+        res.status(500).send()
+      })
+  })
   ```
 
 ### 093 - Promise Chaining
 
+- Let's take a break to cover the advanced Promise Chaining concept
+- We do one async thing so far, but what about when we want to do one async and then another?
+- Let's move to `playground`
+- We can make an async adding function ourselves...
+
+  ```js
+  const add = (a, b) => {
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        resolve(a + b)
+      }, 2000)
+    })
+  }
+
+  add(1, 2)
+    .then((sum) => {
+      console.log(sum)
+    })
+    .catch((e) => {
+      console.log(e)
+    })
+  ```
+
+- If we want to use the sum in another async `add` call, we can just put it in the `then` block... but then it gets way nested and complex and duplicated code.
+- We can promise chain instead.
+- If we return a promise from our `then` block, we can put another `then` on the end and continue. The catch at the end will catch all errors in the whole block.
+  ```js
+  add(1, 2)
+    .then((sum) => {
+      console.log(sum)
+      return add(sum, 4)
+    })
+    .then((sum) => {
+      console.log(sum)
+    })
+    .catch((e) => {
+      console.log(e)
+    })
+  ```
+- Now that we get it, let's use it in our tasks.
+- We can play in a `task-manager/playground` directory to get access to our other methods
+- Let's change the age of a user and then get all users with that same age.
+
+  - We may want to use `findByIdAndUpdate()` or `findOneAndUpdate()`, since they return the found item as well as finding it
+
+  ```js
+  import User from '../src/models/user.js'
+
+  User.findByIdAndUpdate(`60df3e9ce90878153c8f5af5`, { age: 1 })
+    .then((user) => {
+      console.log(user)
+      return User.countDocuments({ age: 1 })
+    })
+    .then((count) => {
+      console.log(count)
+    })
+    .catch((e) => {
+      console.log(e)
+    })
+  ```
+
+- The deprecation warning we get is something behind the scenes with the mongo driver. We don't need to worry about it - it just hasn't been addressed in Mongoose yet - but we can set `useFindAndModify` to `false` on the connection if it's annoying
+- So this is promise chaining. Cool.
+
 ### 094 - Promise Chaining Challenge
+
+- #### Challenge: Mess around with promise chaining
+
+  - Create promise-chaining-2.js
+  - Load in mongoose and task model
+  - Remove a given task by id
+  - Get and print the total number of incomplete tasks
+  - Test your work!
+
+  ```js
+  import Task from '../src/models/task.js'
+
+  Task.findByIdAndDelete(`60e44f527450292a57116731`)
+    .then((task) => {
+      console.log(task)
+      return Task.countDocuments({ completed: false })
+    })
+    .then((count) => {
+      console.log(count)
+    })
+    .catch((e) => {
+      console.log(e)
+    })
+  ```
 
 ### 095 - Async/Await
 
+- We should cover this before adding more functionality to the task manager
+- Async/Await is maybe the biggest improvement to JS as long as Andrew's been coding with it
+- This isn't a whole new thing - it's just a small set of tools that make it easy to work with promises
+- This will play a major role in the task-manager app; it'll be used on every route
+- Let's start with dummy async tasks in `playground/010-async-await.js`
+
+  ```js
+  // Not async
+  const doWork = () => {}
+
+  console.log(doWork())
+  // undefined
+  ```
+
+  ```js
+  // async
+  const doWork = async () => {}
+
+  console.log(doWork())
+  // Promise { undefined }
+  //
+  // Promise fulfilled with value undefined
+  //
+  // async functions return a promise fulfilled by the value returned by the
+  // function
+  ```
+
+  ```js
+  // async with return value
+  const doWork = async () => {
+    return 'Andrew'
+  }
+
+  console.log(doWork())
+  // Promise { 'Andrew' }
+  ```
+
+  ```js
+  // async handled with promise structure
+  const doWork = async () => {
+    return 'Andrew'
+  }
+
+  doWork()
+    .then((result) => {
+      console.log(`result: ${result}`)
+    })
+    .catch((e) => {
+      console.log(`e: ${e}`)
+    })
+  ```
+
+  ```js
+  // Async throwing error
+  const doWork = async () => {
+    throw new Error(`Something went wrong!`)
+    return 'Andrew'
+  }
+
+  doWork()
+    .then((result) => {
+      console.log(`result: ${result}`)
+    })
+    .catch((e) => {
+      console.log(`e: ${e}`)
+    })
+  // e: Error: Something went wrong!
+  //
+  // Throwing an error is equivalent to rejecting the promise
+  ```
+
+- The other half is `await`
+  - It can only be used in `async` functions
+  - We'll borrow add from `009-promises.js`
+  - `async/await` doesn't change how Promises are written; you just change how you work with them
+  - Libraries don't need to rewrite either way
+- Inside `doWork()`, let's call `add()` a few times
+
+  ```js
+  const doWork = async () => {
+    // Can assign to a var instead of promise flow for syntactical benefit
+    const sum = await add(1, 99)
+  }
+  doWork()
+    .then((result) => {
+      console.log(`result: ${result}`)
+    })
+    .catch((e) => {
+      console.log(`e: ${e}`)
+    })
+  // Waits the 2s, returns 100
+  // Can use code that looks synchronous to do async tasks
+  ```
+
+  ```js
+  const doWork = async () => {
+    const sum = await add(1, 99)
+    const sum2 = await add(sum, 50)
+    const sum3 = await add(sum2, 3)
+    return sum3
+  }
+  // Runs in 6s, so it takes a while
+  // But it's easier to read/write
+  ```
+
+  ```js
+  const add = (a, b) => {
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        // Let's add a rejection case
+        if (a < 0 || b < 0) {
+          return reject(`Numbers must be non-negative`)
+        }
+        resolve(a + b)
+      }, 2000)
+    })
+  }
+
+  const doWork = async () => {
+    const sum = await add(1, 99)
+    // This will throw an error after ~4s
+    const sum2 = await add(sum, -50)
+    const sum3 = await add(sum2, 3)
+    return sum3
+  }
+  ```
+
 ### 096 - Async/Await: Part 2
+
+- Let's put it into practice and do a challenge or two.
+- Let's get back into task-manager
+- We'll convert `promise-chaining.js` to async/await, do `promise-chaining-2.js` as a challenge, then we'll do some async/await in `index.js` to clean up the code.
+
+  ```js
+  cconst updateAgeAndCount = async (id, age) => {
+    const user = await User.findByIdAndUpdate(id, { age })
+    const count = await User.countDocuments({ age })
+    return count
+  }
+
+  updateAgeAndCount(`60df447cafd67319b93f897e`, 2)
+    .then((count) => {
+      console.log(count)
+    })
+    .catch((e) => {
+      console.log(e)
+    })
+
+  ```
+
+- #### Challenge: Use async/await
+
+  - Create `deleteTaskAndCount()` as an async function
+  - Accept id of the task to remove
+  - Use await to delete task and count up incomplete tasks
+  - Return the count
+  - Call the function and attach then/catch to log results
+  - Test your work!
+
+  ```js
+  const deleteTaskAndCount = async (id) => {
+    // We could also just do await Task.find...
+    const task = await Task.findByIdAndDelete(id)
+    const count = await Task.countDocuments({ completed: false })
+    return count
+  }
+
+  deleteTaskAndCount(`60e44ebd38b48f298e7ebfeb`)
+    .then((count) => {
+      console.log(count)
+    })
+    .catch((e) => {
+      console.log(e)
+    })
+  // This was my own little experiment
+  console.log(`Immediately after function call`)
+  // OUTPUT:
+  // Immediately after function call
+  // 3
+  ```
 
 ### 097 - Integrating Async/Await
 
+- We're going to async/await our existing routes
+- `index.js`
+
+  ```js
+  app.post(`/users`, async (req, res) => {
+    const user = new User(req.body)
+    user
+      .save()
+      .then(() => {
+        res.status(201).send(user)
+      })
+      .catch((e) => {
+        res.status(400).send(e)
+      })
+  })
+
+  // BECOMES
+
+  app.post(`/users`, async (req, res) => {
+    const user = new User(req.body)
+    try {
+      await user.save()
+      res.status(201).send(user)
+    } catch (e) {
+      res.status(400).send(e)
+    }
+  })
+
+  ---
+
+  app.get(`/users`, async (req, res) => {
+    User.find({})
+      .then((users) => {
+        res.status(200).send(users)
+      })
+      .catch((e) => {
+        res.status(500).send()
+      })
+  }
+  // BECOMES
+  app.get(`/users`, async (req, res) => {
+    try {
+      const users = await User.find({})
+      res.status(200).send(users)
+    } catch (e) {
+      res.status(500).send()
+    }
+  })
+  ```
+
+- I honestly think I might like the promise syntax better...
+
+  ```js
+  app.get(`/users/:id`, (req, res) => {
+    const _id = req.params.id
+    User.findById(_id)
+      .then((user) => {
+        if (!user) {
+          return res.status(404).send()
+        }
+        res.status(200).send(user)
+      })
+      .catch((e) => {
+        res.status(500).send(e)
+      })
+  })
+  // BECOMES
+  app.get(`/users/:id`, async (req, res) => {
+    const _id = req.params.id
+    try {
+      const user = await User.findById(_id)
+
+      if (!user) {
+        return res.status(404).send()
+      }
+
+      res.status(200).send(user)
+    } catch (e) {
+      res.status(500).send(e)
+    }
+  })
+  ```
+
+- Test everything with Postman
+- #### Challenge: Refactor task routes to async/await
+  - Refactor task routes to use async/await
+  - Test all routes in Postman
+- NOTE: The function(s) that generate(s) the promise(s) need(s) to be INSIDE the try block.
+
 ### 098 - Resource Updating Endpoints: Part I
+
+- Let's set up some update endpoints
+  ```js
+  app.patch(`/users/:id`, async (req, res) => {
+    const _id = req.params.id
+    // Only allow changes to existing properties
+    const updates = Object.keys(req.body)
+    const allowedUpdates = [`name`, `email`, `password`, `age`]
+    const isValidOperation = updates.every((item) =>
+      allowedUpdates.includes(item)
+    )
+    if (!isValidOperation) {
+      return res.status(400).send({ error: `Invalid updates!` })
+    }
+    // Update user
+    try {
+      // Takes id, body (updated properties), and options (return new user, run validators on update)
+      const user = await User.findByIdAndUpdate(_id, req.body, {
+        new: true,
+        runValidators: true,
+      })
+      if (!user) {
+        return res.status(404).send()
+      }
+      res.status(200).send(user)
+    } catch (e) {
+      res.status(400).send(e)
+    }
+  })
+  ```
 
 ### 099 - Resource Updating Endpoints: Part 2
 
+- We'll set up the endpoint for updating tasks by ID
+- #### Challenge: Allow for task updates
+  - Set up the route handler
+  - Send error if unknown updates
+  - Attempt to update the task
+    - Handle task not found
+    - Handle validation errors
+    - Handle success
+  - Test your work!
+  ```js
+  app.patch(`/tasks/:id`, async (req, res) => {
+    const _id = req.params.id
+    const updates = Object.keys(req.body)
+    const allowedUpdates = [`description`, `completed`]
+    const isValidOperation = updates.every((item) =>
+      allowedUpdates.includes(item)
+    )
+    if (!isValidOperation) {
+      return res.status(400).send({ error: `Invalid updates!` })
+    }
+    try {
+      const task = await Task.findByIdAndUpdate(_id, req.body, {
+        new: true,
+        runValidators: true,
+      })
+      if (!task) {
+        return res.status(404).send()
+      }
+      res.status(200).send(task)
+    } catch (e) {
+      res.status(400).send(e)
+    }
+  })
+  ```
+
 ### 100 - Resource Deleting Endpoints
 
+- Fairly straightforward at this point
+
+  ```js
+  ...
+  app.delete(`/users/:id`, async (req, res) => {
+    const _id = req.params.id
+    try {
+      const user = await User.findByIdAndDelete(_id)
+      if (!user) {
+        return res.status(404).send()
+      }
+      res.status(200).send(user)
+    } catch (e) {
+      res.status(500).send(e)
+    }
+  })
+  ...
+  app.delete(`/tasks/:id`, async (req, res) => {
+    const _id = req.params.id
+    try {
+      const task = await Task.findByIdAndDelete(_id)
+      console.log(task)
+      if (!task) {
+        return res.status(404).send()
+      }
+      res.status(200).send(task)
+    } catch (e) {
+      res.status(500).send(e)
+    }
+  })
+  ...
+  ```
+
 ### 101 - Separate Route Files
+
+- Everything is currently in `index.js`
+- Maybe we should split these up into separate route files...
+- We could split them up into Users and Tasks
+- We'll set up multiple Express routers and set them up as we need
+- So we instead create routers and export them from `src/routers/user.js` and `src/routers/task.js`
+- We just set `const router = new express.Router()` and add the endpoints with `router.{method}` instead of `app.{method}`
+- We can then export them and incorporate them into the app using `app.use(userRouter)` and `app.use(taskRouter)`
 
 ---
 
 ## Section 12: API Authentication and Security (Task App)
 
-### 102 -
+### 102 - Section Intro: API Authentication and Security
 
-### 103 -
+### 103 - Securely Storing Passwords: Part 1
 
-### 104 -
+### 104 - Securely Storing Passwords: Part 2
 
-### 105 -
+### 105 - Logging in Users
 
-### 106 -
+### 106 - JSON Web Tokens
 
-### 107 -
+### 107 - Generating Authentication Tokens
 
-### 108 -
+### 108 - Express Middleware
 
-### 109 -
+### 109 - Accepting Authentication Tokens
 
-### 110 -
+### 110 - Advanced Postman
 
-### 111 -
+### 111 - Logging Out
 
-### 112 -
+### 112 - Hiding Private Data
 
-### 113 -
+### 113 - Authenticating User Endpoints
 
-### 114 -
+### 114 - The User/Task Relationship
 
-### 115 -
+### 115 - Authenticating Task Endpoints
 
-### 116 -
+### 116 - Cascade Delete Tasks
 
-### 117 -
+---
 
-### 118 -
+## Section 13: Sorting, Pagination, and Filtering (Task App)
 
-### 119 -
+### 117 - Section Intro: Sorting, Pagination, and Filtering
 
-### 120 -
+### 118 - Working with Timestamps
 
-### 121 -
+### 119 - Filtering Data
 
-### 122 -
+### 120 - Paginating Data
 
-### 123 -
+### 121 - Sorting Data
 
-### 124 -
+---
 
-### 125 -
+## Section 14: File Uploads (Task App)
 
-### 126 -
+### 122 - Section Intro: File Uploads
 
-### 127 -
+### 123 - Adding Support for File Uploads
 
-### 128 -
+### 124 - Validating File Uploads
 
-### 129 -
+### 125 - Validation Challenge
 
-### 130 -
+### 126 - Handling Express Errors
 
-### 131 -
+### 127 - Adding Images to User Profile
 
-### 132 -
+### 128 - Serving Up Files
 
-### 133 -
+### 129 - Auto-Cropping and Image Formatting
 
-### 134 -
+---
 
-### 135 -
+## Section 15: Sending Emails (Task App)
 
-### 136 -
+### 130 - Section Intro: Sending Emails
 
-### 137 -
+### 131 - Exploring SendGrid
 
-### 138 -
+### 132 - Sending Welcome and Cancelation Emails
 
-### 139 -
+### 133 - Environmental Variables
 
-### 140 -
+### 134 - Creating a Production MongoDB Database
 
-### 141 -
+### 135 - Heroku Deployment
 
-### 142 -
+---
 
-### 143 -
+## Section 16: Testing Node.js (Task App)
 
-### 144 -
+### 136 - Section Intro: Testing Node.js
 
-### 145 -
+### 137 - Jest Testing Framework
 
-### 146 -
+### 138 - Writing Tests and Assertions
 
-### 147 -
+### 139 - Writing YOur Own Tests
 
-### 148 -
+### 140 - Testing Asynchronous Code
 
-### 149 -
+### 141 - Testing an Express Application: Part 1
 
-### 150 -
+### 142 - Testing an Express Application: Part 2
 
-### 151 -
+### 143 - Jest Setup and Teardown
 
-### 152 -
+### 144 - Testing with Authentication
 
-### 153 -
+### 145 - Advanced Assertions
 
-### 154 -
+### 146 - Mocking Libraries
 
-### 155 -
+### 147 -Wrapping up User Tests
 
-### 156 -
+### 148 - Setup Task Test Suite
 
-### 157 -
+### 149 - Testing with Task Data
 
-### 158 -
+### 150 - Bonus: Extra Test Ideas
 
-### 159 -
+---
 
-### 160 -
+## Section 17: Real-Time Web Applications with Socket.io (Chat App)
 
-### 161 -
+### 151 - Section Intro: Real-Time Web Applications with Socket.io
 
-### 162 -
+### 152 - Creating the Chat App Project
 
-### 163 -
+### 153 - WebSockets
 
-### 164 -
+### 154 - Getting Started with Socket.io
 
-### 165 -
+### 155 - Socket.io Events
 
-### 166 -
+### 156 - Socket.io Events Challenge
 
-### 167 -
+### 157 - Broadcasting Events
 
-### 168 -
+### 158 - Sharing Your Location
 
-### 169 -
+### 159 - Event Acknowledgements
 
-### 170 -
+### 160 - Form and Button States
 
-### 171 -
+### 161 - Rendering Messages
 
-### 172 -
+### 162 - Rendering Location Messages
 
-### 173 -
+### 163 - Workin with Time
 
-### 174 -
+### 164 - Timestamps for Location Messages
 
-### 175 -
+### 165 - Styling the Chat App
 
-### 176 -
+### 166 - Join Page
 
-### 177 -
+### 167 - Socket.io Rooms
+
+### 168 - Storing Users: Part 1
+
+### 169 - Storing Users: Part 2
+
+### 170 - Tracking Users Joining and Leaving
+
+### 171 - Sending Messages to Rooms
+
+### 172 - Rendering User List
+
+### 173 - Automatic Scrolling
+
+### 174 - Deploying the Chat Application
+
+---
+
+## Section 18: Wrapping Up
+
+### 175 - Section Intro
+
+### 176 - New Feature Ideas
+
+### 177 - Bonus: What should I learn next?
