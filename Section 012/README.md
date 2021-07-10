@@ -541,6 +541,41 @@
 
 ### 112 - Hiding Private Data
 
+- If we log in as a user, we see our password and tokens array with all of the user's tokens. We should lock all of this down.
+- In the user router...
+  ```js
+  router.post(`/users/login`, async (req, res) => {
+    try {
+    ...
+      // This fx doesn't exist, but it will soon
+      res.send({ user: user.getPuglicPrifile(), token })
+    }
+    ...
+  })
+  ```
+- In the user model...
+
+  ```js
+  userSchema.methods.getPublicProfile = function () {
+    const user = this
+    const userObject = user.toObject()
+
+    return userObject
+  }
+  ```
+
+- Logging in again, we see the same thing
+- We should add...
+
+  ```js
+  delete userObject.password
+  delete userObjec.tokens
+  ```
+
+- We then just get the relevant data, but it's fairly manual
+- We can automate it so it works with all our handlers
+- We can return to sending back just `{user}` if we rename the method to `toJSON`, it will replace the behavior of `JSON.stringify(...)` with the contents of the `toJSON` function.
+
 ### 113 - Authenticating User Endpoints
 
 ### 114 - The User/Task Relationship
