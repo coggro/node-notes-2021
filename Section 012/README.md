@@ -359,15 +359,185 @@
   ```
 
 - #### Challenge: Set up middleware for maintenance mode
+
   - Register a new middleware function
   - Send back a maintenance message with a 503 status code
   - Try your requests from the server and confirm status/message shows
 
+  ```js
+  app.use((req, res, next) => {
+    res.status(503).send(`Service temporarily unavailable due to maintenance.`)
+  })
+  ```
+
 ### 109 - Accepting Authentication Tokens
+
+- We're going to ass auth middleware using the same techniques
+- We'll check for incoming auth, validate it, and find the associated user
+- We did our initial middleware in the index, but it's better to do it in a separate file
+- We'll create a `middleware` dir and an `auth.js` file inside
+- `src/middleware/auth.js`
+
+  ```js
+  const auth = async (req, res, next) => {
+    console.log(`auth middleare`)
+    next()
+  }
+
+  export default auth
+  ```
+
+- When we define middleware in the index the way we did, it'll get used on every route - not neccessarily what we're looking for, especially with registering and logging in
+- Let's remove our existing functions from index.js and head over to the user router to learn how to add middleware on a per-route basis
+
+  ```js
+  ...
+  // import middleware into router
+  import auth from '../middleware/auth.js'
+  ...
+  // Add it between route and handler function
+  // Middleware will only run route if next() is called
+  router.get(`/users`, auth, async (req, res) => {
+    try {
+      const users = await User.find({})
+      res.status(200).send(users)
+    } catch (e) {
+      res.status(500).send()
+    }
+  })
+  ```
+
+- We can repeat for any routes requiring auth
+- What will auth actually do? Auth starts with client taking login token and sending with request
+- We'll add a header to the `GET /users` request for `Authorization: Bearer {token}`
+- Let's add to the auth middleware
+
+  ```js
+  import jsonwebtoken from 'jsonwebtoken'
+  import User from '../models/user.js'
+
+  const auth = async (req, res, next) => {
+    try {
+      const token = req.header(`Authorization`).replace(`Bearer `, ``)
+      const decoded = jsonwebtoken.verify(
+        token,
+        `dactyl-hedgehog-columnar-bane-alleyway-finish-outclass-fructify`
+      )
+      const user = await User.findOne({
+        _id: decoded._id,
+        'tokens.token': token,
+      })
+
+      if (!user) {
+        throw new Error()
+      }
+
+      req.user = user
+      next()
+    } catch (e) {
+      // If they don't validate, don't run next()
+      res.status(401).send({ error: `Please authenticate.` })
+    }
+  }
+
+  export default auth
+  ```
+
+- Major issue: We have information about other uses exposed on the `GET /users` route
+- Let's change that route into a user profile endpoint
+
+  ```js
+  router.get(`/users/me`, auth, async (req, res) => {
+    // Since the user is returned by auth and this route only
+    // returns if auth hits next, we can just send back the user
+    res.send(req.user)
+  })
+  ```
+
+- Recap
+  - Set up auth middleware for a route
+  - Then wrote auth middleware to check for the token, decode and verify it, and confirm the user exists by finding them
+  - If there's no user, we throw an error
+  - If there is a user, we add it to the `req` and call `next()`
+  - If any errors are thrown, we sned an error response
 
 ### 110 - Advanced Postman
 
+- Let's cover some advanced Postman to make the large number of requests easier to handle
+- Postman Environments and Postman Environment Variables
+- Currently, all our requests are made to localhost; what about when we deploy?
+- We'll create a new environment called `Task Manager API DEV` and add a `url` variable with initial value `localhost:3000` to it.
+- We'll create a PROD environment as well with an empty `url` variable (until we know the production URL)
+- We can use the DEV `url` by replacing `localhost:3000` with `{{url}}`
+- We can update the rest of our routes
+  - Yes, this is annoying
+  - It does, however, make all of these much easier to use later on
+- Currently, only one route has auth implemented, and it uses a static token header
+- We could instead update them all to use the same auth scheme
+- We can add the token to Auth in each request, but we could also add it to the entire collection
+  - Login and Sign Up should have No Auth
+- We can also automate the authorization by writing some JS
+  - We can run code before the request in Pre-Request Script and after the script in Tests
+  - Login User Tests
+    ```js
+    // If the response returns a 200 code...
+    if (pm.response.code === 200) {
+      // ...set the environmental variable `authToken` to the token
+      // value from the JSONified response
+      pm.environment.set(`authToken`, pm.response.json().token)
+    }
+    ```
+  - We can now test this code and copy it over to creating the user (changing the response code to 201)
+  - The auth token is now automated!
+  - We can even see the value in the environment variable
+
 ### 111 - Logging Out
+
+- Let's add an endpoint to log out and remove tokens
+- We should add `req.token = token` to the auth middleware to get the validated and authorized token
+- Then we can add another route to the user router and execute the logout
+
+  ```js
+  // POST /users/logout with auth middleware
+  router.post(`/users/logout`, auth, async (req, res) => {
+    try {
+      // Replace users tokens with the same array filtered to remove
+      // the authorized token (the only one that will return false)
+      req.user.tokens = req.user.tokens.filter((token) => {
+        return token.token !== req.token
+      })
+      // Save the user with the token removed
+      await req.user.save()
+
+      // Send a 200 OK code and nothing else
+      res.send()
+    } catch (e) {
+      // If anything goes wrong, send a 500 Server Error
+      res.status(500).send()
+    }
+  })
+  ```
+
+- #### Challenge: Create a way to logout of all sessions
+
+  - Set up POST /users/logoutAll
+  - create the router handler to wipe the tokens array
+    - send 200 or 500
+  - Test your work
+    - Log in a few times and logout of all. Check DB
+
+  ```js
+  router.post(`/users/logoutall`, auth, async (req, res) => {
+    try {
+      req.user.tokens = []
+      await req.user.save()
+
+      res.send()
+    } catch (e) {
+      res.status(500).send()
+    }
+  })
+  ```
 
 ### 112 - Hiding Private Data
 
