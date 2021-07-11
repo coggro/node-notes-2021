@@ -578,8 +578,290 @@
 
 ### 113 - Authenticating User Endpoints
 
+- Let's finish auth on User
+- Delete, Update, and Get By ID need auth
+- Get By ID has actually been replaced by the user profile, so we can just delete it
+- We still want users to be able to update and delete
+- Delete comes first...
+  ```js
+  router.delete(`/users/:id`, async (req, res) => {
+    const _id = req.params.id
+    try {
+      const user = await User.findByIdAndDelete(_id)
+      if (!user) {
+        return res.status(404).send()
+      }
+      res.status(200).send(user)
+    } catch (e) {
+      res.status(500).send(e)
+    }
+  })
+  // BECOMES
+  // /me instead of /:id so they can't delete other users
+  // Add in auth middleware
+  router.delete(`/users/me`, auth, async (req, res) => {
+    // Get user id from middleware instead of request params
+    const _id = req.user._id
+    try {
+      // We don't need to check for a user because auth already did
+      // We can just have the user remove itself and send back the
+      // result from that operation
+      await req.user.remove()
+      res.status(200).send(req.user)
+    } catch (e) {
+      res.status(500).send(e)
+    }
+  })
+  ```
+- Updating the user could use changes as well. This will be the challenge.
+- #### Challenge: Refactor the update profile route
+
+  - Update the URL to /users/me
+  - Add the authentication middleware
+  - Use the existing user document instead of fetching via param id
+  - Test your work in Postman
+
+  ```js
+  router.patch(`/users/:id`, async (req, res) => {
+    const _id = req.params.id
+    const updates = Object.keys(req.body)
+    const allowedUpdates = [`name`, `email`, `password`, `age`]
+    const isValidOperation = updates.every((update) =>
+      allowedUpdates.includes(update)
+    )
+    if (!isValidOperation) {
+      return res.status(400).send({ error: `Invalid updates!` })
+    }
+    try {
+      const user = await User.findById(_id)
+
+      if (!user) {
+        return res.status(404).send()
+      }
+      updates.forEach((update) => (user[update] = req.body[update]))
+
+      await user.save()
+      res.status(201).send(user)
+    } catch (e) {
+      res.status(400).send(e)
+    }
+  })
+  // BECOMES
+  // Remove ID, add auth
+  router.patch(`/users/me`, auth, async (req, res) => {
+    // use req.user instead of req.params
+    const _id = req.user.id
+    const updates = Object.keys(req.body)
+    const allowedUpdates = [`name`, `email`, `password`, `age`]
+    const isValidOperation = updates.every((update) =>
+      allowedUpdates.includes(update)
+    )
+    if (!isValidOperation) {
+      return res.status(400).send({ error: `Invalid updates!` })
+    }
+    try {
+      // Don't have to validate user because they're authed
+      updates.forEach((update) => (req.user[update] = req.body[update]))
+
+      await req.user.save()
+      res.status(201).send(req.user)
+    } catch (e) {
+      res.status(400).send(e)
+    }
+  })
+  ```
+
 ### 114 - The User/Task Relationship
+
+- Now that User is behind auth, let's work on Tasks
+- We need to relate users and tasks to make sure users can only access their tasks
+- We'll be in `index.js`, `models/user.js`, `models/task.js`, `routers/task.js`
+- We'll have tasks store their associated user
+- `models/task.js`
+  ```js
+  ...
+  owner: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true,
+  },
+  ...
+  ```
+- We should then trash our DB, since all of the tasks in it have no owners
+- `routers/task.js`
+
+  ```js
+  ...
+  import auth from '../middleware/auth.js'
+  ...
+  router.post(`/tasks`, auth, async (req, res) => {
+    const task = new Task({ ...req.body, owner: req.user._id })
+  ...
+  ```
+
+- Now that the relationship is in place, let's see some advanced ways we can work with it.
+- `index.js`
+
+  ```js
+  const main = async () => {
+    const task = await Task.findById({task ID})
+    console.log(task.owner)
+  }
+
+  main()
+  // OUTPUT
+  // {owner ID}
+
+  ```
+
+- What if we want the owner's name? Do we need to fire off another request?
+- Can add `` ref: `User`, `` to Task model
+- Can then run `` await task.populate(`owner`).execPopulate() `` to hydrate owner with the full User object
+- How can we get tasks by user, though?
+- `index.js`
+
+  ```js
+  import User from './models/user.js'
+
+  const main = async () => {
+    const user = await User.findById(`60eafefef9c4946511936d8a`)
+    console.log(user.tasks)
+  }
+
+  main()
+  ```
+
+- We can set a virtual property on User to get tasks by user
+
+  ```js
+  // This is not stored in the DB
+  userSchema.virtual(`tasks`, {
+    ref: `Task`,
+    localField: `_id`, // Field on owner we're relating to...
+    foreignField: `owner`, // ... a field on Task
+  })
+  ```
+
+- Can then add `` await user.populate(`tasks`).execPopulate() `` to the main fx in `index.js` to get tasks attached to a user
+- These relationships are now set up!
+- Virtuals and populating don't need to be fully understood quite yet, we'll be practicing with them shortly
 
 ### 115 - Authenticating Task Endpoints
 
+- Let's add auth to the task endpoints
+- `router/task.js`
+
+  ```js
+  router.get(`/tasks/:id`, async (req, res) => {
+    const _id = req.params.id
+    try {
+      const task = await Task.findById(_id)
+      if (!task) {
+        return res.status(404).send()
+      }
+      res.status(200).send(task)
+    } catch (e) {
+      res.status(500).send()
+    }
+  })
+  // BECOMES
+  // Just add auth...
+  router.get(`/tasks/:id`, auth, async (req, res) => {
+    const _id = req.params.id
+    try {
+      // And change this call to findOne with the task id and the id
+      // from the authorized user
+      const task = await Task.findOne({ _id, owner: req.user._id })
+      if (!task) {
+        return res.status(404).send()
+      }
+      res.status(200).send(task)
+    } catch (e) {
+      res.status(500).send()
+    }
+  })
+  ```
+
+- Test in Postman to ensure tasks still come up by ID, even with new users, and then make sure users can't access other users' tasks
+- #### Challenge: Refactor GET /tasks
+  - Add authentication
+  - Return tasks only for the authenticated user
+  - Test your work!
+  ```js
+  router.get(`/tasks`, async (req, res) => {
+    try {
+      const tasks = await Task.find({})
+      res.status(200).send(tasks)
+    } catch (e) {
+      res.status(500).send()
+    }
+  })
+  // BECOMES
+  router.get(`/tasks`, auth, async (req, res) => {
+    try {
+      const tasks = await Task.find({ owner: req.user._id })
+      res.status(200).send(tasks)
+    } catch (e) {
+      res.status(500).send()
+    }
+  })
+  // OR!!!
+  router.get(`/tasks`, auth, async (req, res) => {
+    try {
+      // If you'd rather hydrate user with its tasks
+      await req.user.populate(`tasks`).execPopulate()
+      res.status(200).send(req.user.tasks)
+    } catch (e) {
+      res.status(500).send()
+    }
+  })
+  ```
+- Patch is a minor adjustment, as expected
+- #### Challenge: Refactor DELETE /tasks/:id
+
+  - Add auth
+  - Find the task by \_id/owner (findOneAndDelete)
+  - Test your work!
+
+  ```js
+  router.delete(`/tasks/:id`, async (req, res) => {
+    const _id = req.params.id
+    try {
+      const task = await Task.findByIdAndDelete(_id)
+      if (!task) {
+        return res.status(404).send()
+      }
+      res.status(200).send(task)
+    } catch (e) {
+      res.status(500).send(e)
+    }
+  })
+  // BECOMES
+  router.delete(`/tasks/:id`, auth, async (req, res) => {
+    const _id = req.params.id
+    try {
+      const task = await Task.findOneAndDelete({ _id, owner: req.user._id })
+      if (!task) {
+        return res.status(404).send()
+      }
+      res.status(200).send(task)
+    } catch (e) {
+      res.status(500).send(e)
+    }
+  })
+  ```
+
 ### 116 - Cascade Delete Tasks
+
+- If a user is deleted, their tasks should also be deleted
+- We could add to `DELETE /users/me`, or we could add middleware to the User model
+
+  ```js
+  // Delete user tasks when user is removed
+  userSchema.pre(`remove`, async function (next) {
+    const user = this
+
+    await Task.deleteMany({ owner: user._id })
+
+    next()
+  })
+  ```
