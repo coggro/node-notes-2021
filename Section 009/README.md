@@ -92,6 +92,7 @@
   - Update forecast string to include new data
   - Commit changes
   - Push changes to GH and Heroku
+    - git push origin heroku
   - Test work live
   - I added humidity.
 
